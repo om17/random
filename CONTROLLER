@@ -1,0 +1,51 @@
+package com.everhealth.usage.integration.controller;
+
+
+
+import com.everhealth.usage.integration.model.UsageResponse;
+
+import com.everhealth.usage.integration.model.UsageRequest;
+import com.everhealth.usage.integration.service.UsageService;
+import com.everhealth.usage.integration.util.ValidationHelper;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import jakarta.validation.Valid;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.stereotype.Controller;
+
+import org.springframework.validation.annotation.Validated;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+
+import java.util.List;
+
+@Controller
+public class UsageController {
+
+    Logger LOG = LoggerFactory.getLogger(UsageController.class);
+    public ValidationHelper validationHelper =  new ValidationHelper();
+
+    @Autowired
+    public UsageService usageService;
+
+
+
+
+    public UsageController(UsageService usageService){
+        this.usageService = usageService;
+    }
+
+
+    @Validated
+    @PostMapping("/v1/record-ingestion")
+    public ResponseEntity<Object> usageDetails(@RequestBody @Valid List<UsageRequest> usageRequest) throws JsonProcessingException {
+        LOG.info("UsageController - Inside UsageDetails");
+        return usageService.sendUsageRecords(usageRequest);
+    }
+
+
+
+}
