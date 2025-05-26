@@ -1,51 +1,105 @@
-package com.everhealth.usage.integration.controller;
-
-
-
-import com.everhealth.usage.integration.model.UsageResponse;
-
+package com.everhealth.usage.integration.ControllerTest;
+import com.everhealth.usage.integration.controller.UsageController;
 import com.everhealth.usage.integration.model.UsageRequest;
+import com.everhealth.usage.integration.model.UsageResponse;
 import com.everhealth.usage.integration.service.UsageService;
-import com.everhealth.usage.integration.util.ValidationHelper;
-import com.fasterxml.jackson.core.JsonProcessingException;
-import jakarta.validation.Valid;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import com.everhealth.usage.integration.service.impl.UsageServiceImpl;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import org.junit.Assert;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import org.mockito.Mockito;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.http.HttpStatus;
+import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
+import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
-import org.springframework.stereotype.Controller;
+import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.web.client.RestTemplate;
 
-import org.springframework.validation.annotation.Validated;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
+import java.util.Arrays;
+import java.util.Collections;
 
-import java.util.List;
+import static org.mockito.ArgumentMatchers.any;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
-@Controller
-public class UsageController {
 
-    Logger LOG = LoggerFactory.getLogger(UsageController.class);
-    public ValidationHelper validationHelper =  new ValidationHelper();
+@WebMvcTest(UsageController.class)
+public class UsageTestController {
 
     @Autowired
-    public UsageService usageService;
+    private MockMvc mockMvc;
 
+    @InjectMocks
+    private UsageServiceImpl usageServiceImpl;
 
+    private String baseUrl = "https://sit.entapps-evercommerce.com/eh/usage/";
 
+    private static RestTemplate restTemplate;
 
-    public UsageController(UsageService usageService){
-        this.usageService = usageService;
+    @BeforeAll
+    public static void init(){
+        restTemplate = new RestTemplate();
+    }
+    @BeforeEach
+    public void setup(){
+        baseUrl = baseUrl.concat("/v1/record-ingestion");
     }
 
+    /*@Test()
+    public void testUsageDetails_Success(){
+        UsageRequest request = new UsageRequest();
+        request.setPlatformId("platform1");
+        request.setUom("uom1");
+        request.setQuantity("10");
+        request.setStartDate("2024-06-01");
+        request.setChargeId("charge1");
+        request.setUniqueKey("key1");
 
-    @Validated
-    @PostMapping("/v1/record-ingestion")
-    public ResponseEntity<Object> usageDetails(@RequestBody @Valid List<UsageRequest> usageRequest) throws JsonProcessingException {
-        LOG.info("UsageController - Inside UsageDetails");
-        return usageService.sendUsageRecords(usageRequest);
+
+        UsageResponse usageResponse = new UsageResponse();
+        usageResponse.setSuccess(true);
+        usageResponse.setMessage("Successfully uploaded 1 records!");
+        usageResponse.setChargeId("C-00005804");
+
+        restTemplate.postForObject(baseUrl,request,UsageRequest.class);
+        Assert.assertEquals();
+    }*/
+
+   /* @MockBean
+    private UsageService usageService;*/
+
+    @Autowired
+    private ObjectMapper objectMapper;
+
+    @Test
+    void testUsageDetails_Success() throws Exception {
+        UsageRequest request = new UsageRequest();
+        request.setPlatformId("platform1");
+        request.setUom("uom1");
+        request.setQuantity("10");
+        request.setStartDate("2024-06-01");
+        request.setChargeId("charge1");
+        request.setUniqueKey("key1");
+
+        UsageResponse response = new UsageResponse();
+        response.setChargeId("charge1");
+        response.setSuccess(true);
+        response.setMessage("Success");
+
+        Mockito.when(usageServiceImpl.sendUsageRecords(any()))
+                .thenReturn(ResponseEntity.ok(Collections.singletonList(response)));
+
+        mockMvc.perform(post(baseUrl)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Arrays.asList(request))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].chargeId").value("charge1"))
+                .andExpect(jsonPath("$[0].success").value(true))
+                .andExpect(jsonPath("$[0].message").value("Success"));
     }
-
-
-
 }
