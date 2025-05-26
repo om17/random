@@ -1,0 +1,190 @@
+package com.everhealth.usage.integration.service.impl;
+
+import com.everhealth.usage.integration.common.ApplicationConstants;
+import com.everhealth.usage.integration.entity.TransactionLog;
+import com.everhealth.usage.integration.entity.TransactionPayload;
+import com.everhealth.usage.integration.feign.ZuoraClient;
+import com.everhealth.usage.integration.model.UsageResponse;
+import com.everhealth.usage.integration.model.UsageRequest;
+import com.everhealth.usage.integration.model.ZuoraResponse;
+import com.everhealth.usage.integration.service.TransactionService;
+import com.everhealth.usage.integration.service.UsageService;
+import com.everhealth.usage.integration.util.JsonToString;
+
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import feign.FeignException;
+import io.micrometer.common.util.StringUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.ResponseEntity;
+import org.springframework.stereotype.Service;
+
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
+@Service
+public class UsageServiceImpl implements UsageService {
+
+    Logger log = LoggerFactory.getLogger(UsageServiceImpl.class);
+    private final ZuoraAuthServiceImpl zuoraAuthServiceImpl;
+    @Autowired
+    private TransactionService transactionService;
+    @Autowired
+    ObjectMapper objectMapper;
+    @Autowired
+    private ZuoraClient zuoraClient;
+
+    public UsageServiceImpl(ZuoraAuthServiceImpl zuoraAuthServiceImpl){
+
+        this.zuoraAuthServiceImpl = zuoraAuthServiceImpl;
+
+    }
+
+
+    @Override
+    public ResponseEntity<Object> sendUsageRecords(List<UsageRequest> usageRequest) throws JsonProcessingException {
+        log.info("UsageServiceImpl - insertUsageDetails method start");
+        List<UsageResponse> usageResponseList=new ArrayList<>();
+        //Generate access Token
+        String accessToken = zuoraAuthServiceImpl.getOAuthToken();
+        log.info("sendUsageRecords flow - Retrieved oauth token is: {}",accessToken);
+            if(!StringUtils.isEmpty(accessToken) && accessToken != null)
+            {
+                processUsageRecords(usageRequest, accessToken, usageResponseList);
+                log.info("UsageServiceImpl - insertUsageDetails method end");
+                return ResponseEntity.ok().body(usageResponseList);
+            }
+            else{
+                log.warn("Retrieved Zuora OAuth token is NULL or EMPTY");
+                buildResponse(null, usageResponseList,ApplicationConstants.TOKEN_ERROR_MESSAGE,false);
+            return ResponseEntity.internalServerError().body(usageResponseList);
+            }
+
+    }
+
+
+    private void processUsageRecords(List<UsageRequest> usageRequest, String accessToken, List<UsageResponse> usageResponseList) {
+        log.info("UsageServiceImpl - processUsageRecords method start");
+        Map<TransactionLog, TransactionPayload> transactionMap = new HashMap<>();
+        usageRequest.forEach(usageRequestObj -> {
+            boolean isRCMUsage=false;
+            try{
+
+                ResponseEntity<Object> response=null;
+                if(usageRequestObj.getUom().equalsIgnoreCase(ApplicationConstants.RCM_UOM)){
+                    log.info("Inside RCM usage ingestion flow : {}", usageRequestObj.getUom());
+                    isRCMUsage=true;
+                     response = zuoraClient
+                            .insertRCMUsageDetails("Bearer "+accessToken , usageRequestObj);
+                }else {
+                    log.info("Inside standard usage ingestion flow : {}", usageRequestObj.getUom());
+                     response = zuoraClient
+                            .insertUsageDetails("Bearer " + accessToken, usageRequestObj);
+                }
+                log.info("Zuora Mediation API response {}", response);
+                if(response.getStatusCode().is2xxSuccessful()){
+                    ZuoraResponse zuoraResponse = objectMapper.convertValue(response.getBody(), ZuoraResponse.class);
+                    String usageResponseStr=JsonToString.convertObjectToJsonString(zuoraResponse);
+                    if(zuoraResponse.getSuccess()){
+                        buildSuccessTrsansactionRecords(transactionMap,usageRequestObj, usageResponseStr,isRCMUsage);
+                        buildResponse(usageRequestObj, usageResponseList,zuoraResponse.getMessage(),zuoraResponse.getSuccess());
+                    }else{
+                        buildfailureTrsansactionRecords(transactionMap,usageRequestObj, usageResponseStr,response.getStatusCode().value(),zuoraResponse.getMessage(),isRCMUsage);
+                        buildResponse(usageRequestObj, usageResponseList,zuoraResponse.getMessage(),zuoraResponse.getSuccess());
+                    }
+                }}catch (FeignException e){
+                log.info("Zuora Mediation API Thrown an Exception {} {} {}", e.getMessage(),e.status(),e.contentUTF8());
+                buildfailureTrsansactionRecords(transactionMap,usageRequestObj, e.contentUTF8(),e.status(),e.getMessage(),isRCMUsage);
+                buildResponse(usageRequestObj, usageResponseList,e.getMessage(),false);
+            }catch (Exception e){
+                log.info("Internal exception in method processUsageRecords {} ", e.getMessage());
+                buildResponse(usageRequestObj, usageResponseList,e.getMessage(),false);
+            }
+        });
+        transactionService.saveTransactionRecords(transactionMap);
+        log.info("UsageServiceImpl - processUsageRecords method end");
+    }
+
+    private void buildResponse(UsageRequest usageRequestObj, List<UsageResponse> usageResponseList, String message,boolean status) {
+        log.info("UsageServiceImpl - buildResponse method start");
+        UsageResponse usageResponse = new UsageResponse();
+        usageResponse.setMessage(message);
+        usageResponse.setSuccess(status);
+        if(usageRequestObj!=null){
+            usageResponse.setChargeId(usageRequestObj.getChargeId());
+        }
+        usageResponseList.add(usageResponse);
+        log.info("UsageServiceImpl - buildResponse method end");
+    }
+
+    private void buildSuccessTrsansactionRecords(Map<TransactionLog, TransactionPayload> transactionMap, UsageRequest usageRequestObj, String response,boolean isRCMUsage) {
+        log.info("UsageServiceImpl - buildSuccessTrsansactionRecords method start");
+        TransactionLog transactionLog=new TransactionLog();
+        LocalDateTime now = LocalDateTime.now();
+        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("ddMMyyHHmmss");
+        String formattedTimestamp = now.format(formatter);
+        transactionLog.setEventId(usageRequestObj.getUniqueKey()+"_"+formattedTimestamp);
+        transactionLog.setObjectName(ApplicationConstants.OBJECT_NAME);
+        transactionLog.setObjectId(usageRequestObj.getChargeId());
+        transactionLog.setLogType(ApplicationConstants.LOG_TYPE);
+        if(isRCMUsage){
+            transactionLog.setAction(ApplicationConstants.RCM_USAGE);
+        }else {
+            transactionLog.setAction(ApplicationConstants.STANDARD_USAGE);
+        }
+        transactionLog.setStatus(ApplicationConstants.SUCCESS);
+        transactionLog.setServiceName(ApplicationConstants.SERVICE_NAME);
+        transactionLog.setSourceSystem(ApplicationConstants.SOURCE_SYSTEM);
+        transactionLog.setTargetSystem(ApplicationConstants.TARGET_SYSTEM);
+        transactionLog.setCreatedTimeStamp(now);
+        transactionLog.setUpdatedTimeStamp(now);
+
+        TransactionPayload transactionPayload=new TransactionPayload();
+        transactionPayload.setRequestPayload(JsonToString.convertObjectToJsonString(usageRequestObj));
+        transactionPayload.setResponsePayload(response);
+        transactionPayload.setCreatedTimeStamp(now);
+        transactionPayload.setUpdatedTimeStamp(now);
+        transactionMap.put(transactionLog,transactionPayload);
+        log.info("UsageServiceImpl - buildSuccessTrsansactionRecords method end");
+    }
+    private void buildfailureTrsansactionRecords(Map<TransactionLog, TransactionPayload> transactionMap, UsageRequest requestObj, String response, int statusCode,String errorMessage,boolean isRCMUsage) {
+        log.info("UsageServiceImpl - buildfailureTrsansactionRecords method start");
+        TransactionLog transactionLog=new TransactionLog();
+        LocalDateTime now = LocalDateTime.now();
+        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("ddMMyyHHmmss");
+        String formattedTimestamp = now.format(formatter);
+        transactionLog.setEventId(requestObj.getUniqueKey()+"_"+formattedTimestamp);
+        transactionLog.setObjectName(ApplicationConstants.OBJECT_NAME);
+        transactionLog.setObjectId(requestObj.getChargeId());
+        transactionLog.setLogType(ApplicationConstants.LOG_TYPE);
+        if(isRCMUsage){
+            transactionLog.setAction(ApplicationConstants.RCM_USAGE);
+        }else {
+            transactionLog.setAction(ApplicationConstants.STANDARD_USAGE);
+        }
+        transactionLog.setStatus(ApplicationConstants.FAILURE);
+        transactionLog.setServiceName(ApplicationConstants.SERVICE_NAME);
+        transactionLog.setSourceSystem(ApplicationConstants.SOURCE_SYSTEM);
+        transactionLog.setTargetSystem(ApplicationConstants.TARGET_SYSTEM);
+        transactionLog.setErrorCode(statusCode);
+        transactionLog.setErrorMessage(errorMessage);
+        transactionLog.setCreatedTimeStamp(now);
+        transactionLog.setUpdatedTimeStamp(now);
+
+        TransactionPayload transactionPayload=new TransactionPayload();
+        transactionPayload.setRequestPayload(JsonToString.convertObjectToJsonString(requestObj));
+        transactionPayload.setResponsePayload(response);
+        transactionPayload.setCreatedTimeStamp(now);
+        transactionPayload.setUpdatedTimeStamp(now);
+        transactionMap.put(transactionLog,transactionPayload);
+        log.info("UsageServiceImpl - buildfailureTrsansactionRecords method end");
+    }
+
+
+}
