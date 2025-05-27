@@ -1,52 +1,31 @@
-2025-05-27T11:46:38.271+05:30  INFO 12160 --- [eh-usage-integration] [           main] c.e.u.i.controller.UsageController       : UsageController - Inside UsageDetails
+org.mockito.exceptions.base.MockitoException: 
 
-MockHttpServletRequest:
-      HTTP Method = POST
-      Request URI = /v1/record-ingestion
-       Parameters = {}
-          Headers = [Content-Type:"application/json;charset=UTF-8", Content-Length:"237"]
-             Body = [{"platformId":"platform1","uom":"uom1","quantity":"10","startDate":"2024-06-01","endDate":null,"product":null,"subscriptionId":null,"chargeId":"charge1","description":null,"uniqueKey":"key1","userName":null,"accountNumber":"platform1"}]
-    Session Attrs = {org.springframework.security.web.csrf.HttpSessionCsrfTokenRepository.CSRF_TOKEN=org.springframework.security.web.csrf.DefaultCsrfToken@4f2d8175}
-
-Handler:
-             Type = null
-
-Async:
-    Async started = false
-     Async result = null
-
-Resolved Exception:
-             Type = null
-
-ModelAndView:
-        View name = null
-             View = null
-            Model = null
-
-FlashMap:
-       Attributes = null
-
-MockHttpServletResponse:
-           Status = 403
-    Error message = Forbidden
-          Headers = [X-Content-Type-Options:"nosniff", X-XSS-Protection:"0", Cache-Control:"no-cache, no-store, max-age=0, must-revalidate", Pragma:"no-cache", Expires:"0", X-Frame-Options:"DENY"]
-     Content type = null
-             Body = 
-    Forwarded URL = null
-   Redirected URL = null
-          Cookies = []
-
-java.lang.AssertionError: Status expected:<200> but was:<403>
-Expected :200
-Actual   :403
-<Click to see difference>
+No tests found in UsageServiceImplTest
+Is the method annotated with @Test?
+Is the method public?
 
 
-	at org.springframework.test.util.AssertionErrors.fail(AssertionErrors.java:61)
-	at org.springframework.test.util.AssertionErrors.assertEquals(AssertionErrors.java:128)
-	at org.springframework.test.web.servlet.result.StatusResultMatchers.lambda$matcher$9(StatusResultMatchers.java:640)
-	at org.springframework.test.web.servlet.MockMvc$1.andExpect(MockMvc.java:214)
-	at com.everhealth.usage.integration.ControllerTest.UsageTestController.testUsageDetails_Success(UsageTestController.java:124)
-	at java.base/java.lang.reflect.Method.invoke(Method.java:580)
-	at java.base/java.util.ArrayList.forEach(ArrayList.java:1596)
-	at java.base/java.util.ArrayList.forEach(ArrayList.java:1596)
+	at org.mockito.internal.runners.RunnerFactory.create(RunnerFactory.java:82)
+	at org.mockito.internal.runners.RunnerFactory.createStrict(RunnerFactory.java:40)
+	at org.mockito.junit.MockitoJUnitRunner.<init>(MockitoJUnitRunner.java:154)
+	at java.base/java.lang.reflect.Constructor.newInstanceWithCaller(Constructor.java:502)
+	at java.base/java.lang.reflect.Constructor.newInstance(Constructor.java:486)
+	at java.base/java.util.stream.ReferencePipeline$3$1.accept(ReferencePipeline.java:197)
+	at java.base/java.util.ArrayList$ArrayListSpliterator.tryAdvance(ArrayList.java:1685)
+	at java.base/java.util.stream.ReferencePipeline.forEachWithCancel(ReferencePipeline.java:129)
+	at java.base/java.util.stream.AbstractPipeline.copyIntoWithCancel(AbstractPipeline.java:527)
+	at java.base/java.util.stream.AbstractPipeline.copyInto(AbstractPipeline.java:513)
+	at java.base/java.util.stream.AbstractPipeline.wrapAndCopyInto(AbstractPipeline.java:499)
+	at java.base/java.util.stream.FindOps$FindOp.evaluateSequential(FindOps.java:150)
+	at java.base/java.util.stream.AbstractPipeline.evaluate(AbstractPipeline.java:234)
+	at java.base/java.util.stream.ReferencePipeline.findFirst(ReferencePipeline.java:647)
+Caused by: java.lang.reflect.InvocationTargetException
+	at java.base/java.lang.reflect.Constructor.newInstanceWithCaller(Constructor.java:502)
+	at java.base/java.lang.reflect.Constructor.newInstance(Constructor.java:486)
+	at org.mockito.internal.runners.util.RunnerProvider.newInstance(RunnerProvider.java:29)
+	at org.mockito.internal.runners.RunnerFactory.create(RunnerFactory.java:75)
+	... 13 more
+Caused by: org.junit.runners.model.InitializationError
+	at org.mockito.internal.runners.DefaultInternalRunner$1.<init>(DefaultInternalRunner.java:31)
+	at org.mockito.internal.runners.DefaultInternalRunner.<init>(DefaultInternalRunner.java:30)
+	... 17 more
