@@ -9,14 +9,21 @@ import org.junit.Assert;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.Mockito;
+import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
+
+import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.context.annotation.Bean;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.web.client.RestTemplate;
 
@@ -27,15 +34,21 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
-
+@ExtendWith(MockitoExtension.class)
 @WebMvcTest(UsageController.class)
 public class UsageTestController {
 
     @Autowired
     private MockMvc mockMvc;
 
+    @MockBean
+    private UsageService usageService;
+
     @InjectMocks
-    private UsageServiceImpl usageServiceImpl;
+    private UsageController usageController;
+
+    /*@InjectMocks
+    private UsageServiceImpl usageServiceImpl;*/
 
     private String baseUrl = "https://sit.entapps-evercommerce.com/eh/usage/";
 
@@ -48,7 +61,18 @@ public class UsageTestController {
     @BeforeEach
     public void setup(){
         baseUrl = baseUrl.concat("/v1/record-ingestion");
+
     }
+
+    /*@TestConfiguration
+    static class TestSecurityConfig {
+        @Bean
+        public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
+            http.csrf().disable()
+                    .authorizeHttpRequests().anyRequest().permitAll();
+            return http.build();
+        }
+    }*/
 
     /*@Test()
     public void testUsageDetails_Success(){
@@ -91,10 +115,10 @@ public class UsageTestController {
         response.setSuccess(true);
         response.setMessage("Success");
 
-        Mockito.when(usageServiceImpl.sendUsageRecords(any()))
+        Mockito.when(usageController.usageDetails(any()))
                 .thenReturn(ResponseEntity.ok(Collections.singletonList(response)));
 
-        mockMvc.perform(post(baseUrl)
+        mockMvc.perform(post("/v1/record-ingestion")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Arrays.asList(request))))
                 .andExpect(status().isOk())
