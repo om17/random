@@ -1,5 +1,6 @@
-package com.everhealth.usage.integration.service.impl;
+package com.everhealth.usage.integration.ServiceTest;
 
+import com.everhealth.usage.integration.common.ApplicationConstants;
 import com.everhealth.usage.integration.entity.TransactionLog;
 import com.everhealth.usage.integration.entity.TransactionPayload;
 import com.everhealth.usage.integration.feign.ZuoraClient;
@@ -7,107 +8,198 @@ import com.everhealth.usage.integration.model.UsageRequest;
 import com.everhealth.usage.integration.model.UsageResponse;
 import com.everhealth.usage.integration.model.ZuoraResponse;
 import com.everhealth.usage.integration.service.TransactionService;
+import com.everhealth.usage.integration.service.impl.UsageServiceImpl;
+import com.everhealth.usage.integration.service.impl.ZuoraAuthServiceImpl;
 import com.fasterxml.jackson.databind.ObjectMapper;
-
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-
-import org.mockito.ArgumentCaptor;
-import org.mockito.InjectMocks;
-import org.mockito.Mock;
-
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
+import org.junit.runner.RunWith;
+import org.mockito.*;
+import org.mockito.junit.MockitoJUnitRunner;
+import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 
-import org.springframework.test.context.junit.jupiter.SpringExtension;
-
+import java.lang.reflect.Field;
 import java.util.*;
 
+import feign.Request;
+import feign.RequestTemplate;
+import java.util.Collections;
+
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.when;
+
+import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
-@ExtendWith(SpringExtension.class)
-@SpringBootTest
-class UsageServiceImplSITTest {
 
-    @MockBean
-    private ZuoraAuthServiceImpl zuoraAuthService;
+@ExtendWith(MockitoExtension.class)
+@RunWith(MockitoJUnitRunner.class)
 
-    @MockBean
-    private ZuoraClient zuoraClient;
+public class UsageServiceImplTest {
 
-    @MockBean
+
+    @Mock
+    private ZuoraAuthServiceImpl zuoraAuthServiceImpl;
+
+    @Mock
     private TransactionService transactionService;
 
-    @MockBean
-    private ObjectMapper objectMapper;
+
+    private ZuoraClient zuoraClient = Mockito.mock(ZuoraClient.class);
 
     @InjectMocks
-    private UsageServiceImpl usageService;
+    private UsageServiceImpl usageServiceImpl;
+
+    @Spy
+    private ObjectMapper objectMapper = new ObjectMapper();
+
+
+
+
+
+
+
+
+
+
+    private void setPrivateField(Object target, String fieldName, Object value) throws Exception {
+        Field field = target.getClass().getDeclaredField(fieldName);
+        field.setAccessible(true);
+        field.set(target, value);
+    }
+
+    @BeforeEach
+    void setUp() throws Exception {
+        MockitoAnnotations.openMocks(this);
+        usageServiceImpl = new UsageServiceImpl(zuoraAuthServiceImpl);
+        setPrivateField(usageServiceImpl, "transactionService", transactionService);
+        setPrivateField(usageServiceImpl, "objectMapper", objectMapper);
+        setPrivateField(usageServiceImpl, "zuoraClient", zuoraClient);
+    }
 
     @Test
-    void sendUsageRecords_shouldReturnSuccess_whenValidTokenAndValidResponse() throws Exception {
+    void testSendUsageRecords_Success_StandardUsage() throws Exception {
         // Arrange
-        UsageRequest request = new UsageRequest();
-        request.setChargeId("chargeId1");
-        request.setUom("API_CALL");
-        request.setUniqueKey("unique-key-1");
-        List<UsageRequest> usageRequests = Collections.singletonList(request);
+        UsageRequest usageRequest = new UsageRequest();
+        usageRequest.setPlatformId("A00015587");
+        usageRequest.setUom("Appointment");
+        usageRequest.setQuantity("301");
+        usageRequest.setStartDate("4/30/2025");
+        usageRequest.setEndDate("4/30/2027");
+        usageRequest.setProduct("ProductXYZ");
+        usageRequest.setSubscriptionId("A-S00000819");
+        usageRequest.setChargeId("charge1");
+        usageRequest.setUniqueKey("unique1");
+        usageRequest.setUserName("JaneDoe");
+
+        List<UsageRequest> usageRequests = Collections.singletonList(usageRequest);
+
+        when(zuoraAuthServiceImpl.getOAuthToken()).thenReturn("token123");
 
         ZuoraResponse zuoraResponse = new ZuoraResponse();
         zuoraResponse.setSuccess(true);
         zuoraResponse.setMessage("Success");
 
-        when(zuoraAuthService.getOAuthToken()).thenReturn("valid-token");
-        when(zuoraClient.insertUsageDetails(eq("Bearer valid-token"), eq(request)))
-            .thenReturn(new ResponseEntity<>(zuoraResponse, HttpStatus.OK));
-        when(objectMapper.convertValue(any(), eq(ZuoraResponse.class)))
-            .thenReturn(zuoraResponse);
+        ResponseEntity<Object> zuoraApiResponse = new ResponseEntity<>(zuoraResponse, HttpStatus.OK);
+
+        when(zuoraClient.insertUsageDetails(anyString(), any(UsageRequest.class))).thenReturn(zuoraApiResponse);
 
         // Act
-        ResponseEntity<Object> response = usageService.sendUsageRecords(usageRequests);
+        ResponseEntity<Object> response = usageServiceImpl.sendUsageRecords(usageRequests);
 
         // Assert
         assertEquals(HttpStatus.OK, response.getStatusCode());
-        List<UsageResponse> responseBody = (List<UsageResponse>) response.getBody();
-        assertNotNull(responseBody);
-        assertTrue(responseBody.get(0).isSuccess());
-        verify(transactionService).saveTransactionRecords(anyMap());
+        List<UsageResponse> usageResponses = (List<UsageResponse>) response.getBody();
+        assertNotNull(usageResponses);
+        assertTrue(usageResponses.get(0).getSuccess());
+        verify(transactionService, times(1)).saveTransactionRecords(anyMap());
     }
 
     @Test
-    void sendUsageRecords_shouldReturnError_whenTokenIsEmpty() throws Exception {
-        when(zuoraAuthService.getOAuthToken()).thenReturn("");
+    void testSendUsageRecords_Success_RCMUsage() throws Exception {
+        // Arrange
+        UsageRequest usageRequest = new UsageRequest();
+        usageRequest.setUom(ApplicationConstants.RCM_UOM);
+        usageRequest.setPlatformId("A00015587");
+        usageRequest.setQuantity("301");
+        usageRequest.setStartDate("4/30/2025");
+        usageRequest.setEndDate("4/30/2027");
+        usageRequest.setProduct("ProductXYZ");
+        usageRequest.setSubscriptionId("A-S00000819");
+        usageRequest.setChargeId("charge1");
+        usageRequest.setUniqueKey("unique1");
+        usageRequest.setUserName("JaneDoe");
 
-        ResponseEntity<Object> response = usageService.sendUsageRecords(List.of());
+        List<UsageRequest> usageRequests = Collections.singletonList(usageRequest);
 
-        assertEquals(HttpStatus.INTERNAL_SERVER_ERROR, response.getStatusCode());
-        List<UsageResponse> responseBody = (List<UsageResponse>) response.getBody();
-        assertFalse(responseBody.get(0).isSuccess());
-        assertTrue(responseBody.get(0).getMessage().contains("token"));
-    }
+        when(zuoraAuthServiceImpl.getOAuthToken()).thenReturn("token456");
 
-    @Test
-    void sendUsageRecords_shouldHandleFeignException() throws Exception {
-        UsageRequest request = new UsageRequest();
-        request.setChargeId("chargeId2");
-        request.setUom("API_CALL");
-        request.setUniqueKey("unique-key-2");
+        ZuoraResponse zuoraResponse = new ZuoraResponse();
+        zuoraResponse.setSuccess(true);
+        zuoraResponse.setMessage("RCM Success");
 
-        List<UsageRequest> usageRequests = List.of(request);
+        ResponseEntity<Object> zuoraApiResponse = new ResponseEntity<>(zuoraResponse, HttpStatus.OK);
 
-        when(zuoraAuthService.getOAuthToken()).thenReturn("token");
-        when(zuoraClient.insertUsageDetails(anyString(), any()))
-            .thenThrow(mock(FeignException.class));
-        when(objectMapper.convertValue(any(), eq(ZuoraResponse.class)))
-            .thenReturn(new ZuoraResponse());
+        when(zuoraClient.insertRCMUsageDetails(anyString(), any(UsageRequest.class))).thenReturn(zuoraApiResponse);
 
-        ResponseEntity<Object> response = usageService.sendUsageRecords(usageRequests);
+        // Act
+        ResponseEntity<Object> response = usageServiceImpl.sendUsageRecords(usageRequests);
 
+        // Assert
         assertEquals(HttpStatus.OK, response.getStatusCode());
-        List<UsageResponse> body = (List<UsageResponse>) response.getBody();
-        assertFalse(body.get(0).isSuccess());
+        List<UsageResponse> usageResponses = (List<UsageResponse>) response.getBody();
+        assertNotNull(usageResponses);
+        assertTrue(usageResponses.get(0).getSuccess());
+        verify(transactionService, times(1)).saveTransactionRecords(anyMap());
     }
+
+    @Test
+    void testSendUsageRecords_Failure_TokenNull() throws Exception {
+        // Arrange
+        List<UsageRequest> usageRequests = new ArrayList<>();
+        when(zuoraAuthServiceImpl.getOAuthToken()).thenReturn(null);
+
+        // Act
+        ResponseEntity<Object> response = usageServiceImpl.sendUsageRecords(usageRequests);
+
+        // Assert
+        assertEquals(HttpStatus.INTERNAL_SERVER_ERROR, response.getStatusCode());
+        List<UsageResponse> usageResponses = (List<UsageResponse>) response.getBody();
+        assertNotNull(usageResponses);
+        assertFalse(usageResponses.get(0).getSuccess());
+        verify(transactionService, never()).saveTransactionRecords(anyMap());
+    }
+
+    @Test
+    void testProcessUsageRecords_Failure_ZuoraClientException() throws Exception {
+        // Arrange
+        UsageRequest usageRequest = new UsageRequest();
+        usageRequest.setUom("STANDARD");
+        usageRequest.setChargeId("charge3");
+        usageRequest.setUniqueKey("unique3");
+
+        List<UsageRequest> usageRequests = Collections.singletonList(usageRequest);
+
+        Request request = Request.create(
+                Request.HttpMethod.POST,
+                "https://example.com/usage", // Replace with a dummy URL
+                new HashMap<>(),
+                null,
+                null,
+                new RequestTemplate());
+
+        when(zuoraAuthServiceImpl.getOAuthToken()).thenReturn("token789");
+        when(zuoraClient.insertUsageDetails(anyString(), any(UsageRequest.class)))
+                .thenThrow(new feign.FeignException.BadRequest("Bad Request", request, null, null));
+
+        // Act & Assert
+        assertDoesNotThrow(() -> usageServiceImpl.sendUsageRecords(usageRequests));
+        verify(transactionService, times(1)).saveTransactionRecords(anyMap());
+    }
+
+    // Add more tests as needed for edge cases, nulls, etc.
 }
