@@ -1,0 +1,113 @@
+package com.everhealth.usage.integration.service.impl;
+
+import com.everhealth.usage.integration.entity.TransactionLog;
+import com.everhealth.usage.integration.entity.TransactionPayload;
+import com.everhealth.usage.integration.feign.ZuoraClient;
+import com.everhealth.usage.integration.model.UsageRequest;
+import com.everhealth.usage.integration.model.UsageResponse;
+import com.everhealth.usage.integration.model.ZuoraResponse;
+import com.everhealth.usage.integration.service.TransactionService;
+import com.fasterxml.jackson.databind.ObjectMapper;
+
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+
+import org.mockito.ArgumentCaptor;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+
+import org.springframework.test.context.junit.jupiter.SpringExtension;
+
+import java.util.*;
+
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.*;
+
+@ExtendWith(SpringExtension.class)
+@SpringBootTest
+class UsageServiceImplSITTest {
+
+    @MockBean
+    private ZuoraAuthServiceImpl zuoraAuthService;
+
+    @MockBean
+    private ZuoraClient zuoraClient;
+
+    @MockBean
+    private TransactionService transactionService;
+
+    @MockBean
+    private ObjectMapper objectMapper;
+
+    @InjectMocks
+    private UsageServiceImpl usageService;
+
+    @Test
+    void sendUsageRecords_shouldReturnSuccess_whenValidTokenAndValidResponse() throws Exception {
+        // Arrange
+        UsageRequest request = new UsageRequest();
+        request.setChargeId("chargeId1");
+        request.setUom("API_CALL");
+        request.setUniqueKey("unique-key-1");
+        List<UsageRequest> usageRequests = Collections.singletonList(request);
+
+        ZuoraResponse zuoraResponse = new ZuoraResponse();
+        zuoraResponse.setSuccess(true);
+        zuoraResponse.setMessage("Success");
+
+        when(zuoraAuthService.getOAuthToken()).thenReturn("valid-token");
+        when(zuoraClient.insertUsageDetails(eq("Bearer valid-token"), eq(request)))
+            .thenReturn(new ResponseEntity<>(zuoraResponse, HttpStatus.OK));
+        when(objectMapper.convertValue(any(), eq(ZuoraResponse.class)))
+            .thenReturn(zuoraResponse);
+
+        // Act
+        ResponseEntity<Object> response = usageService.sendUsageRecords(usageRequests);
+
+        // Assert
+        assertEquals(HttpStatus.OK, response.getStatusCode());
+        List<UsageResponse> responseBody = (List<UsageResponse>) response.getBody();
+        assertNotNull(responseBody);
+        assertTrue(responseBody.get(0).isSuccess());
+        verify(transactionService).saveTransactionRecords(anyMap());
+    }
+
+    @Test
+    void sendUsageRecords_shouldReturnError_whenTokenIsEmpty() throws Exception {
+        when(zuoraAuthService.getOAuthToken()).thenReturn("");
+
+        ResponseEntity<Object> response = usageService.sendUsageRecords(List.of());
+
+        assertEquals(HttpStatus.INTERNAL_SERVER_ERROR, response.getStatusCode());
+        List<UsageResponse> responseBody = (List<UsageResponse>) response.getBody();
+        assertFalse(responseBody.get(0).isSuccess());
+        assertTrue(responseBody.get(0).getMessage().contains("token"));
+    }
+
+    @Test
+    void sendUsageRecords_shouldHandleFeignException() throws Exception {
+        UsageRequest request = new UsageRequest();
+        request.setChargeId("chargeId2");
+        request.setUom("API_CALL");
+        request.setUniqueKey("unique-key-2");
+
+        List<UsageRequest> usageRequests = List.of(request);
+
+        when(zuoraAuthService.getOAuthToken()).thenReturn("token");
+        when(zuoraClient.insertUsageDetails(anyString(), any()))
+            .thenThrow(mock(FeignException.class));
+        when(objectMapper.convertValue(any(), eq(ZuoraResponse.class)))
+            .thenReturn(new ZuoraResponse());
+
+        ResponseEntity<Object> response = usageService.sendUsageRecords(usageRequests);
+
+        assertEquals(HttpStatus.OK, response.getStatusCode());
+        List<UsageResponse> body = (List<UsageResponse>) response.getBody();
+        assertFalse(body.get(0).isSuccess());
+    }
+}
