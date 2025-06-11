@@ -1,205 +1,250 @@
-package com.everhealth.usage.integration.ServiceTest;
+package com.everhealth.usage.integration.service.impl;
 
 import com.everhealth.usage.integration.common.ApplicationConstants;
 import com.everhealth.usage.integration.entity.TransactionLog;
 import com.everhealth.usage.integration.entity.TransactionPayload;
 import com.everhealth.usage.integration.feign.ZuoraClient;
-import com.everhealth.usage.integration.model.UsageRequest;
 import com.everhealth.usage.integration.model.UsageResponse;
+import com.everhealth.usage.integration.model.UsageRequest;
 import com.everhealth.usage.integration.model.ZuoraResponse;
 import com.everhealth.usage.integration.service.TransactionService;
-import com.everhealth.usage.integration.service.impl.UsageServiceImpl;
-import com.everhealth.usage.integration.service.impl.ZuoraAuthServiceImpl;
+import com.everhealth.usage.integration.service.UsageService;
+import com.everhealth.usage.integration.util.JsonToString;
+
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
-import org.junit.runner.RunWith;
-import org.mockito.*;
-import org.mockito.junit.MockitoJUnitRunner;
-import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.http.HttpMethod;
-import org.springframework.http.HttpStatus;
+import feign.FeignException;
+import io.micrometer.common.util.StringUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
+import org.springframework.stereotype.Service;
 
-import java.lang.reflect.Field;
-import java.util.*;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 
-import feign.Request;
-import feign.RequestTemplate;
-import java.util.Collections;
+@Service
+public class UsageServiceImpl implements UsageService {
 
-import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.Mockito.when;
-
-import static org.mockito.ArgumentMatchers.*;
-import static org.mockito.Mockito.*;
-
-
-@ExtendWith(MockitoExtension.class)
-@RunWith(MockitoJUnitRunner.class)
-
-public class UsageServiceImplTest {
-
-
-    @Mock
-    private ZuoraAuthServiceImpl zuoraAuthServiceImpl;
-
-    @Mock
+    Logger log = LoggerFactory.getLogger(UsageServiceImpl.class);
+    private final ZuoraAuthServiceImpl zuoraAuthServiceImpl;
+    @Autowired
     private TransactionService transactionService;
+    @Autowired
+    ObjectMapper objectMapper;
+    @Autowired
+    private ZuoraClient zuoraClient;
 
+    public UsageServiceImpl(ZuoraAuthServiceImpl zuoraAuthServiceImpl){
 
-    private ZuoraClient zuoraClient = Mockito.mock(ZuoraClient.class);
+        this.zuoraAuthServiceImpl = zuoraAuthServiceImpl;
 
-    @InjectMocks
-    private UsageServiceImpl usageServiceImpl;
-
-    @Spy
-    private ObjectMapper objectMapper = new ObjectMapper();
-
-
-
-
-
-
-
-
-
-
-    private void setPrivateField(Object target, String fieldName, Object value) throws Exception {
-        Field field = target.getClass().getDeclaredField(fieldName);
-        field.setAccessible(true);
-        field.set(target, value);
     }
 
-    @BeforeEach
-    void setUp() throws Exception {
-        MockitoAnnotations.openMocks(this);
-        usageServiceImpl = new UsageServiceImpl(zuoraAuthServiceImpl);
-        setPrivateField(usageServiceImpl, "transactionService", transactionService);
-        setPrivateField(usageServiceImpl, "objectMapper", objectMapper);
-        setPrivateField(usageServiceImpl, "zuoraClient", zuoraClient);
+
+    @Override
+    public ResponseEntity<Object> sendUsageRecords(List<UsageRequest> usageRequest) throws JsonProcessingException {
+        log.info("UsageServiceImpl - insertUsageDetails method start");
+
+        UsageResponse usageResponse = new UsageResponse();
+        //Generate access Token
+        String accessToken = zuoraAuthServiceImpl.getOAuthToken();
+        log.info("sendUsageRecords flow - successfully retrieved oauth token ");
+        if(!StringUtils.isEmpty(accessToken))
+        {
+            processUsageRecords(usageRequest, accessToken, usageResponse);
+            log.info("UsageServiceImpl - insertUsageDetails method end");
+            return ResponseEntity.ok().body(usageResponse);
+        }
+        else{
+            log.warn("Retrieved Zuora OAuth token is NULL or EMPTY");
+            buildResponse(null, usageResponse,ApplicationConstants.TOKEN_ERROR_MESSAGE,false);
+            return ResponseEntity.internalServerError().body(usageResponse);
+        }
+
     }
 
-    @Test
-    void testSendUsageRecords_Success_StandardUsage() throws Exception {
-        // Arrange
-        UsageRequest usageRequest = new UsageRequest();
-        usageRequest.setPlatformId("A00015587");
-        usageRequest.setUom("Appointment");
-        usageRequest.setQuantity("301");
-        usageRequest.setStartDate("4/30/2025");
-        usageRequest.setEndDate("4/30/2027");
-        usageRequest.setProduct("ProductXYZ");
-        usageRequest.setSubscriptionId("A-S00000819");
-        usageRequest.setChargeId("charge1");
-        usageRequest.setUniqueKey("unique1");
-        usageRequest.setUserName("JaneDoe");
 
-        List<UsageRequest> usageRequests = Collections.singletonList(usageRequest);
+    private void processUsageRecords(List<UsageRequest> usageRequest, String accessToken, UsageResponse usageResponse) {
+        log.info("UsageServiceImpl - processUsageRecords method start");
+        Map<TransactionLog, TransactionPayload> transactionMap = new HashMap<>();
 
-        when(zuoraAuthServiceImpl.getOAuthToken()).thenReturn("token123");
+        List<UsageRequest> rcmRequest = new ArrayList<>();
+        List<UsageRequest> standardRequest = new ArrayList<>();
 
-        ZuoraResponse zuoraResponse = new ZuoraResponse();
-        zuoraResponse.setSuccess(true);
-        zuoraResponse.setMessage("Success");
+        for(UsageRequest req : usageRequest){
 
-        ResponseEntity<Object> zuoraApiResponse = new ResponseEntity<>(zuoraResponse, HttpStatus.OK);
+            if(ApplicationConstants.RCM_UOM.equalsIgnoreCase(req.getUom())){
 
-        when(zuoraClient.insertUsageDetails(anyString(), any(UsageRequest.class))).thenReturn(zuoraApiResponse);
+                rcmRequest.add(req);
+            }else {
+                standardRequest.add(req);
+            }
+        }
 
-        // Act
-        ResponseEntity<Object> response = usageServiceImpl.sendUsageRecords(usageRequests);
+        try {
+            ResponseEntity<Object> response = null;
+            if(!standardRequest.isEmpty()){
+                response = zuoraClient.insertUsageDetails("Bearer "+ accessToken , standardRequest);
 
-        // Assert
-        assertEquals(HttpStatus.OK, response.getStatusCode());
-        List<UsageResponse> usageResponses = (List<UsageResponse>) response.getBody();
-        assertNotNull(usageResponses);
-        assertTrue(usageResponses.get(0).getSuccess());
-        verify(transactionService, times(1)).saveTransactionRecords(anyMap());
+                handleMultipleResponse(standardRequest,response,usageResponse,transactionMap,false);
+            }
+            if(!rcmRequest.isEmpty()){
+                response = zuoraClient.insertRCMUsageDetails("Bearer "+ accessToken , rcmRequest);
+
+                handleMultipleResponse(rcmRequest,response,usageResponse,transactionMap,true);
+            }
+        }catch (FeignException e) {
+            log.info("Zuora Mediation API Thrown an Exception {} {} {}", e.getMessage(), e.status(), e.contentUTF8());
+           //Handle multiple request of a particular recordType
+            for (UsageRequest req : usageRequest) {
+                buildfailureTrsansactionRecords(transactionMap, req, e.contentUTF8(), e.status(), e.getMessage(), ApplicationConstants.RCM_UOM.equalsIgnoreCase(req.getUom()));
+                buildResponse(req, usageResponse, e.getMessage(), false);
+            }
+        } catch (Exception e) {
+            log.info("Internal exception in method processUsageRecords {} ", e.getMessage());
+            for (UsageRequest req : usageRequest) {
+                buildResponse(req, usageResponse, e.getMessage(), false);
+            }
+        }
+
+
+
+        transactionService.saveTransactionRecords(transactionMap);
+        log.info("UsageServiceImpl - processUsageRecords method end");
     }
 
-    @Test
-    void testSendUsageRecords_Success_RCMUsage() throws Exception {
-        // Arrange
-        UsageRequest usageRequest = new UsageRequest();
-        usageRequest.setUom(ApplicationConstants.RCM_UOM);
-        usageRequest.setPlatformId("A00015587");
-        usageRequest.setQuantity("301");
-        usageRequest.setStartDate("4/30/2025");
-        usageRequest.setEndDate("4/30/2027");
-        usageRequest.setProduct("ProductXYZ");
-        usageRequest.setSubscriptionId("A-S00000819");
-        usageRequest.setChargeId("charge1");
-        usageRequest.setUniqueKey("unique1");
-        usageRequest.setUserName("JaneDoe");
 
-        List<UsageRequest> usageRequests = Collections.singletonList(usageRequest);
 
-        when(zuoraAuthServiceImpl.getOAuthToken()).thenReturn("token456");
+    private void handleMultipleResponse(List<UsageRequest> requests, ResponseEntity<Object> response, UsageResponse usageResponse, Map<TransactionLog, TransactionPayload> transactionMap, boolean isRCMUsage
+    ) throws JsonProcessingException {
+        if (response.getStatusCode().is2xxSuccessful()) {
+            ZuoraResponse zuoraResponse = objectMapper.convertValue(
+                    response.getBody(),
+                    ZuoraResponse.class
+            );
 
-        ZuoraResponse zuoraResponse = new ZuoraResponse();
-        zuoraResponse.setSuccess(true);
-        zuoraResponse.setMessage("RCM Success");
+            String usageResponseStr = JsonToString.convertObjectToJsonString(zuoraResponse);
 
-        ResponseEntity<Object> zuoraApiResponse = new ResponseEntity<>(zuoraResponse, HttpStatus.OK);
+            // Apply the same response to all requests
+            for (UsageRequest req : requests) {
+                if (zuoraResponse.getSuccess()) {
+                    buildSuccessTrsansactionRecords(transactionMap, req, usageResponseStr, isRCMUsage);
+                } else {
+                    buildfailureTrsansactionRecords(
+                            transactionMap,
+                            req,
+                            usageResponseStr,
+                            response.getStatusCode().value(),
+                            zuoraResponse.getMessage(),
+                            isRCMUsage
+                    );
+                }
 
-        when(zuoraClient.insertRCMUsageDetails(anyString(), any(UsageRequest.class))).thenReturn(zuoraApiResponse);
+            }
+            buildSuccessResponse(usageResponse, zuoraResponse.getMessage(), zuoraResponse.getSuccess());
 
-        // Act
-        ResponseEntity<Object> response = usageServiceImpl.sendUsageRecords(usageRequests);
 
-        // Assert
-        assertEquals(HttpStatus.OK, response.getStatusCode());
-        List<UsageResponse> usageResponses = (List<UsageResponse>) response.getBody();
-        assertNotNull(usageResponses);
-        assertTrue(usageResponses.get(0).getSuccess());
-        verify(transactionService, times(1)).saveTransactionRecords(anyMap());
+        } else {
+
+            // Handle batch failure for all requests
+            for (UsageRequest req : requests) {
+                buildfailureTrsansactionRecords(
+                        transactionMap,
+                        req,
+                        response.getBody().toString(),
+                        response.getStatusCode().value(),
+                        "Batch Failure",
+                        isRCMUsage
+                );
+            }
+            buildSuccessResponse(usageResponse, "Batch Failure", false);
+        }
     }
 
-    @Test
-    void testSendUsageRecords_Failure_TokenNull() throws Exception {
-        // Arrange
-        List<UsageRequest> usageRequests = new ArrayList<>();
-        when(zuoraAuthServiceImpl.getOAuthToken()).thenReturn(null);
+    private void buildResponse(UsageRequest usageRequestObj, UsageResponse usageResponse, String message,boolean status) {
+        log.info("UsageServiceImpl - buildResponse method start");
+        usageResponse.setMessage(message);
+        usageResponse.setSuccess(status);
 
-        // Act
-        ResponseEntity<Object> response = usageServiceImpl.sendUsageRecords(usageRequests);
-
-        // Assert
-        assertEquals(HttpStatus.INTERNAL_SERVER_ERROR, response.getStatusCode());
-        List<UsageResponse> usageResponses = (List<UsageResponse>) response.getBody();
-        assertNotNull(usageResponses);
-        assertFalse(usageResponses.get(0).getSuccess());
-        verify(transactionService, never()).saveTransactionRecords(anyMap());
+        log.info("UsageServiceImpl - buildResponse method end");
     }
 
-    @Test
-    void testProcessUsageRecords_Failure_ZuoraClientException() throws Exception {
-        // Arrange
-        UsageRequest usageRequest = new UsageRequest();
-        usageRequest.setUom("STANDARD");
-        usageRequest.setChargeId("charge3");
-        usageRequest.setUniqueKey("unique3");
+    private void buildSuccessResponse( UsageResponse usageResponse, String message,boolean status) {
+        log.info("UsageServiceImpl - buildResponse method start");
+        usageResponse.setMessage(message);
+        usageResponse.setSuccess(status);
 
-        List<UsageRequest> usageRequests = Collections.singletonList(usageRequest);
-
-        Request request = Request.create(
-                Request.HttpMethod.POST,
-                "https://example.com/usage", // Replace with a dummy URL
-                new HashMap<>(),
-                null,
-                null,
-                new RequestTemplate());
-
-        when(zuoraAuthServiceImpl.getOAuthToken()).thenReturn("token789");
-        when(zuoraClient.insertUsageDetails(anyString(), any(UsageRequest.class)))
-                .thenThrow(new feign.FeignException.BadRequest("Bad Request", request, null, null));
-
-        // Act & Assert
-        assertDoesNotThrow(() -> usageServiceImpl.sendUsageRecords(usageRequests));
-        verify(transactionService, times(1)).saveTransactionRecords(anyMap());
+        log.info("UsageServiceImpl - buildResponse method end");
     }
 
-    // Add more tests as needed for edge cases, nulls, etc.
+    private void buildSuccessTrsansactionRecords(Map<TransactionLog, TransactionPayload> transactionMap, UsageRequest usageRequestObj, String response,boolean isRCMUsage) {
+        log.info("UsageServiceImpl - buildSuccessTrsansactionRecords method start");
+        TransactionLog transactionLog=new TransactionLog();
+        LocalDateTime now = LocalDateTime.now();
+        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("ddMMyyHHmmss");
+        String formattedTimestamp = now.format(formatter);
+        transactionLog.setEventId(usageRequestObj.getUniqueKey()+"_"+formattedTimestamp);
+        transactionLog.setObjectName(ApplicationConstants.OBJECT_NAME);
+        transactionLog.setObjectId(usageRequestObj.getChargeId());
+        transactionLog.setLogType(ApplicationConstants.LOG_TYPE);
+        if(isRCMUsage){
+            transactionLog.setAction(ApplicationConstants.RCM_USAGE);
+        }else {
+            transactionLog.setAction(ApplicationConstants.STANDARD_USAGE);
+        }
+        transactionLog.setStatus(ApplicationConstants.SUCCESS);
+        transactionLog.setServiceName(ApplicationConstants.SERVICE_NAME);
+        transactionLog.setSourceSystem(ApplicationConstants.SOURCE_SYSTEM);
+        transactionLog.setTargetSystem(ApplicationConstants.TARGET_SYSTEM);
+        transactionLog.setCreatedTimeStamp(now);
+        transactionLog.setUpdatedTimeStamp(now);
+
+        TransactionPayload transactionPayload=new TransactionPayload();
+        transactionPayload.setRequestPayload(JsonToString.convertObjectToJsonString(usageRequestObj));
+        transactionPayload.setResponsePayload(response);
+        transactionPayload.setCreatedTimeStamp(now);
+        transactionPayload.setUpdatedTimeStamp(now);
+        transactionMap.put(transactionLog,transactionPayload);
+        log.info("UsageServiceImpl - buildSuccessTrsansactionRecords method end");
+    }
+    private void buildfailureTrsansactionRecords(Map<TransactionLog, TransactionPayload> transactionMap, UsageRequest requestObj, String response, int statusCode,String errorMessage,boolean isRCMUsage) {
+        log.info("UsageServiceImpl - buildfailureTrsansactionRecords method start");
+        TransactionLog transactionLog=new TransactionLog();
+        LocalDateTime now = LocalDateTime.now();
+        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("ddMMyyHHmmss");
+        String formattedTimestamp = now.format(formatter);
+        transactionLog.setEventId(requestObj.getUniqueKey()+"_"+formattedTimestamp);
+        transactionLog.setObjectName(ApplicationConstants.OBJECT_NAME);
+        transactionLog.setObjectId(requestObj.getChargeId());
+        transactionLog.setLogType(ApplicationConstants.LOG_TYPE);
+        if(isRCMUsage){
+            transactionLog.setAction(ApplicationConstants.RCM_USAGE);
+        }else {
+            transactionLog.setAction(ApplicationConstants.STANDARD_USAGE);
+        }
+        transactionLog.setStatus(ApplicationConstants.FAILURE);
+        transactionLog.setServiceName(ApplicationConstants.SERVICE_NAME);
+        transactionLog.setSourceSystem(ApplicationConstants.SOURCE_SYSTEM);
+        transactionLog.setTargetSystem(ApplicationConstants.TARGET_SYSTEM);
+        transactionLog.setErrorCode(statusCode);
+        transactionLog.setErrorMessage(errorMessage);
+        transactionLog.setCreatedTimeStamp(now);
+        transactionLog.setUpdatedTimeStamp(now);
+
+        TransactionPayload transactionPayload=new TransactionPayload();
+        transactionPayload.setRequestPayload(JsonToString.convertObjectToJsonString(requestObj));
+        transactionPayload.setResponsePayload(response);
+        transactionPayload.setCreatedTimeStamp(now);
+        transactionPayload.setUpdatedTimeStamp(now);
+        transactionMap.put(transactionLog,transactionPayload);
+        log.info("UsageServiceImpl - buildfailureTrsansactionRecords method end");
+    }
+
+
 }
