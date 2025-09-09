@@ -1,129 +1,53 @@
-package com.everhealth.usage.integration.ControllerTest;
-import com.everhealth.usage.integration.controller.UsageController;
-import com.everhealth.usage.integration.model.UsageRequest;
-import com.everhealth.usage.integration.model.UsageResponse;
-import com.everhealth.usage.integration.service.UsageService;
-import com.everhealth.usage.integration.service.impl.UsageServiceImpl;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import org.junit.Assert;
-import org.junit.jupiter.api.BeforeAll;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
-import org.mockito.Mock;
-import org.mockito.Mockito;
-import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
+package io.conduktor.demos.kafka.wikimedia;
 
-import org.springframework.boot.test.context.TestConfiguration;
-import org.springframework.boot.test.mock.mockito.MockBean;
-import org.springframework.context.annotation.Bean;
-import org.springframework.http.MediaType;
-import org.springframework.http.ResponseEntity;
-import org.springframework.security.config.annotation.web.builders.HttpSecurity;
-import org.springframework.security.web.SecurityFilterChain;
-import org.springframework.test.web.servlet.MockMvc;
-import org.springframework.web.client.RestTemplate;
+import com.launchdarkly.eventsource.EventSource;
+import com.launchdarkly.eventsource.background.BackgroundEventHandler;
+import com.launchdarkly.eventsource.background.BackgroundEventSource;
+import org.apache.kafka.clients.producer.KafkaProducer;
+import org.apache.kafka.clients.producer.ProducerConfig;
+import org.apache.kafka.common.serialization.StringSerializer;
 
-import java.util.Arrays;
-import java.util.Collections;
+import java.net.URI;
+import java.util.Properties;
+import java.util.concurrent.TimeUnit;
 
-import static org.mockito.ArgumentMatchers.any;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
+/**
+ * @author juandiegoespinosasantos
+ * @version Jun 12, 2023
+ * @since 17
+ */
+public class WikimediaChangesProducer {
 
-@ExtendWith(MockitoExtension.class)
-@WebMvcTest(UsageController.class)
-public class UsageTestController {
+    private static final String PROPERTY_BOOTSTRAP_SERVERS = "127.0.0.1:9092";
+    private static final String EVENT_SOURCE_URL = "https://stream.wikimedia.org/v2/stream/recentchange";
+    private static final String TOPIC = "wikimedia.recentchange";
 
-    @Autowired
-    private MockMvc mockMvc;
+    public static void main(String[] args) throws InterruptedException {
+        KafkaProducer<String, String> producer = buildKafkaProducer();
 
-    @MockBean
-    private UsageService usageService;
+        BackgroundEventSource eventSource = buildEventHandler(producer);
+        eventSource.start();
 
-    @InjectMocks
-    private UsageController usageController;
-
-    /*@InjectMocks
-    private UsageServiceImpl usageServiceImpl;*/
-
-    private String baseUrl = "https://sit.entapps-evercommerce.com/eh/usage/";
-
-    private static RestTemplate restTemplate;
-
-    @BeforeAll
-    public static void init(){
-        restTemplate = new RestTemplate();
-    }
-    @BeforeEach
-    public void setup(){
-        baseUrl = baseUrl.concat("/v1/record-ingestion");
-
+        TimeUnit.MINUTES.sleep(10);
     }
 
-    /*@TestConfiguration
-    static class TestSecurityConfig {
-        @Bean
-        public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
-            http.csrf().disable()
-                    .authorizeHttpRequests().anyRequest().permitAll();
-            return http.build();
-        }
-    }*/
+    private static KafkaProducer<String, String> buildKafkaProducer() {
+        return new KafkaProducer<>(getProperties());
+    }
 
-    /*@Test()
-    public void testUsageDetails_Success(){
-        UsageRequest request = new UsageRequest();
-        request.setPlatformId("platform1");
-        request.setUom("uom1");
-        request.setQuantity("10");
-        request.setStartDate("2024-06-01");
-        request.setChargeId("charge1");
-        request.setUniqueKey("key1");
+    private static Properties getProperties() {
+        Properties properties = new Properties();
+        properties.setProperty(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, PROPERTY_BOOTSTRAP_SERVERS);
+        properties.setProperty(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class.getName());
+        properties.setProperty(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, StringSerializer.class.getName());
 
+        return properties;
+    }
 
-        UsageResponse usageResponse = new UsageResponse();
-        usageResponse.setSuccess(true);
-        usageResponse.setMessage("Successfully uploaded 1 records!");
-        usageResponse.setChargeId("C-00005804");
+    private static BackgroundEventSource buildEventHandler(final KafkaProducer<String, String> producer) {
+        BackgroundEventHandler eventHandler = new WikimediaChangeHandler(producer, TOPIC);
+        EventSource.Builder eventSourceBuilder = new EventSource.Builder(URI.create(EVENT_SOURCE_URL));
 
-        restTemplate.postForObject(baseUrl,request,UsageRequest.class);
-        Assert.assertEquals();
-    }*/
-
-   /* @MockBean
-    private UsageService usageService;*/
-
-    @Autowired
-    private ObjectMapper objectMapper;
-
-    @Test
-    void testUsageDetails_Success() throws Exception {
-        UsageRequest request = new UsageRequest();
-        request.setPlatformId("platform1");
-        request.setUom("uom1");
-        request.setQuantity("10");
-        request.setStartDate("2024-06-01");
-        request.setChargeId("charge1");
-        request.setUniqueKey("key1");
-
-        UsageResponse response = new UsageResponse();
-        response.setChargeId("charge1");
-        response.setSuccess(true);
-        response.setMessage("Success");
-
-        Mockito.when(usageController.usageDetails(any()))
-                .thenReturn(ResponseEntity.ok(Collections.singletonList(response)));
-
-        mockMvc.perform(post("/v1/record-ingestion")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(Arrays.asList(request))))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$[0].chargeId").value("charge1"))
-                .andExpect(jsonPath("$[0].success").value(true))
-                .andExpect(jsonPath("$[0].message").value("Success"));
+        return new BackgroundEventSource.Builder(eventHandler, eventSourceBuilder).build();
     }
 }
