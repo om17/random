@@ -1,136 +1,34 @@
-2:25:54 PM: Executing ':kafka-producer-wikimedia:io.conduktor.demos.kafka.wikimedia.WikimediaChangesProducer.main()'…
+When I am hitting this in DEV env, I am getting 400 BAD_Request
+https://jci44nmbpa-vpce-07100da6fbb2a281c.execute-api.us-east-1.amazonaws.com/dev/sorting-service/api/v1/schedules/"38"/disposition-lots/CVS252860032
 
-> Task :kafka-producer-wikimedia:compileJava UP-TO-DATE
-> Task :kafka-producer-wikimedia:processResources NO-SOURCE
-> Task :kafka-producer-wikimedia:classes UP-TO-DATE
+Response
+{
 
-> Task :kafka-producer-wikimedia:io.conduktor.demos.kafka.wikimedia.WikimediaChangesProducer.main()
-[main] INFO org.apache.kafka.clients.producer.ProducerConfig - ProducerConfig values: 
-	acks = -1
-	batch.size = 16384
-	bootstrap.servers = [127.0.0.1:9092]
-	buffer.memory = 33554432
-	client.dns.lookup = use_all_dns_ips
-	client.id = producer-1
-	compression.type = none
-	connections.max.idle.ms = 540000
-	delivery.timeout.ms = 120000
-	enable.idempotence = true
-	interceptor.classes = []
-	key.serializer = class org.apache.kafka.common.serialization.StringSerializer
-	linger.ms = 0
-	max.block.ms = 60000
-	max.in.flight.requests.per.connection = 5
-	max.request.size = 1048576
-	metadata.max.age.ms = 300000
-	metadata.max.idle.ms = 300000
-	metric.reporters = []
-	metrics.num.samples = 2
-	metrics.recording.level = INFO
-	metrics.sample.window.ms = 30000
-	partitioner.adaptive.partitioning.enable = true
-	partitioner.availability.timeout.ms = 0
-	partitioner.class = null
-	partitioner.ignore.keys = false
-	receive.buffer.bytes = 32768
-	reconnect.backoff.max.ms = 1000
-	reconnect.backoff.ms = 50
-	request.timeout.ms = 30000
-	retries = 2147483647
-	retry.backoff.ms = 100
-	sasl.client.callback.handler.class = null
-	sasl.jaas.config = null
-	sasl.kerberos.kinit.cmd = /usr/bin/kinit
-	sasl.kerberos.min.time.before.relogin = 60000
-	sasl.kerberos.service.name = null
-	sasl.kerberos.ticket.renew.jitter = 0.05
-	sasl.kerberos.ticket.renew.window.factor = 0.8
-	sasl.login.callback.handler.class = null
-	sasl.login.class = null
-	sasl.login.connect.timeout.ms = null
-	sasl.login.read.timeout.ms = null
-	sasl.login.refresh.buffer.seconds = 300
-	sasl.login.refresh.min.period.seconds = 60
-	sasl.login.refresh.window.factor = 0.8
-	sasl.login.refresh.window.jitter = 0.05
-	sasl.login.retry.backoff.max.ms = 10000
-	sasl.login.retry.backoff.ms = 100
-	sasl.mechanism = GSSAPI
-	sasl.oauthbearer.clock.skew.seconds = 30
-	sasl.oauthbearer.expected.audience = null
-	sasl.oauthbearer.expected.issuer = null
-	sasl.oauthbearer.jwks.endpoint.refresh.ms = 3600000
-	sasl.oauthbearer.jwks.endpoint.retry.backoff.max.ms = 10000
-	sasl.oauthbearer.jwks.endpoint.retry.backoff.ms = 100
-	sasl.oauthbearer.jwks.endpoint.url = null
-	sasl.oauthbearer.scope.claim.name = scope
-	sasl.oauthbearer.sub.claim.name = sub
-	sasl.oauthbearer.token.endpoint.url = null
-	security.protocol = PLAINTEXT
-	security.providers = null
-	send.buffer.bytes = 131072
-	socket.connection.setup.timeout.max.ms = 30000
-	socket.connection.setup.timeout.ms = 10000
-	ssl.cipher.suites = null
-	ssl.enabled.protocols = [TLSv1.2, TLSv1.3]
-	ssl.endpoint.identification.algorithm = https
-	ssl.engine.factory.class = null
-	ssl.key.password = null
-	ssl.keymanager.algorithm = SunX509
-	ssl.keystore.certificate.chain = null
-	ssl.keystore.key = null
-	ssl.keystore.location = null
-	ssl.keystore.password = null
-	ssl.keystore.type = JKS
-	ssl.protocol = TLSv1.3
-	ssl.provider = null
-	ssl.secure.random.implementation = null
-	ssl.trustmanager.algorithm = PKIX
-	ssl.truststore.certificates = null
-	ssl.truststore.location = null
-	ssl.truststore.password = null
-	ssl.truststore.type = JKS
-	transaction.timeout.ms = 60000
-	transactional.id = null
-	value.serializer = class org.apache.kafka.common.serialization.StringSerializer
+"error": {
 
-[main] INFO org.apache.kafka.clients.producer.KafkaProducer - [Producer clientId=producer-1] Instantiated an idempotent producer.
-[main] INFO org.apache.kafka.common.utils.AppInfoParser - Kafka version: 3.3.1
-[main] INFO org.apache.kafka.common.utils.AppInfoParser - Kafka commitId: e23c59d00e687ff5
-[main] INFO org.apache.kafka.common.utils.AppInfoParser - Kafka startTimeMs: 1757408157574
-[kafka-producer-network-thread | producer-1] INFO org.apache.kafka.clients.Metadata - [Producer clientId=producer-1] Cluster ID: LMQyCp5DT4SVqfNNPdDmmg
-[kafka-producer-network-thread | producer-1] INFO org.apache.kafka.clients.producer.internals.TransactionManager - [Producer clientId=producer-1] ProducerId set to 2 with epoch 0
-[okhttp-eventsource-events[null]-1] ERROR WikimediaChangeHandler - Server returned HTTP error 403
-com.launchdarkly.eventsource.StreamHttpErrorException: Server returned HTTP error 403
-	at com.launchdarkly.eventsource.HttpConnectStrategy$Client.connect(HttpConnectStrategy.java:461)
-	at com.launchdarkly.eventsource.EventSource.tryStart(EventSource.java:292)
-	at com.launchdarkly.eventsource.EventSource.requireEvent(EventSource.java:595)
-	at com.launchdarkly.eventsource.EventSource.readAnyEvent(EventSource.java:390)
-	at com.launchdarkly.eventsource.background.BackgroundEventSource.pollAndDispatchEvent(BackgroundEventSource.java:194)
-	at com.launchdarkly.eventsource.background.BackgroundEventSource.access$900(BackgroundEventSource.java:73)
-	at com.launchdarkly.eventsource.background.BackgroundEventSource$1.run(BackgroundEventSource.java:141)
-	at java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1136)
-	at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:635)
-	at java.base/java.lang.Thread.run(Thread.java:842)
-[okhttp-eventsource-events[null]-1] INFO org.apache.kafka.clients.producer.KafkaProducer - [Producer clientId=producer-1] Closing the Kafka producer with timeoutMillis = 9223372036854775807 ms.
-[okhttp-eventsource-events[null]-1] INFO org.apache.kafka.common.metrics.Metrics - Metrics scheduler closed
-[okhttp-eventsource-events[null]-1] INFO org.apache.kafka.common.metrics.Metrics - Closing reporter org.apache.kafka.common.metrics.JmxReporter
-[okhttp-eventsource-events[null]-1] INFO org.apache.kafka.common.metrics.Metrics - Metrics reporters closed
-[okhttp-eventsource-events[null]-1] INFO org.apache.kafka.common.utils.AppInfoParser - App info kafka.producer for producer-1 unregistered
-[okhttp-eventsource-events[null]-1] ERROR WikimediaChangeHandler - Server returned HTTP error 403
-com.launchdarkly.eventsource.StreamHttpErrorException: Server returned HTTP error 403
-	at com.launchdarkly.eventsource.HttpConnectStrategy$Client.connect(HttpConnectStrategy.java:461)
-	at com.launchdarkly.eventsource.EventSource.tryStart(EventSource.java:292)
-	at com.launchdarkly.eventsource.EventSource.requireEvent(EventSource.java:595)
-	at com.launchdarkly.eventsource.EventSource.readAnyEvent(EventSource.java:390)
-	at com.launchdarkly.eventsource.background.BackgroundEventSource.pollAndDispatchEvent(BackgroundEventSource.java:194)
-	at com.launchdarkly.eventsource.background.BackgroundEventSource.access$900(BackgroundEventSource.java:73)
-	at com.launchdarkly.eventsource.background.BackgroundEventSource$1.run(BackgroundEventSource.java:141)
-	at java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1136)
-	at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:635)
-	at java.base/java.lang.Thread.run(Thread.java:842)
-[okhttp-eventsource-events[null]-1] INFO org.apache.kafka.clients.producer.KafkaProducer - [Producer clientId=producer-1] Closing the Kafka producer with timeoutMillis = 9223372036854775807 ms.
-[okhttp-eventsource-events[null]-1] INFO org.apache.kafka.common.metrics.Metrics - Metrics scheduler closed
-[okhttp-eventsource-events[null]-1] INFO org.apache.kafka.common.metrics.Metrics - Closing reporter org.apache.kafka.common.metrics.JmxReporter
-[okhttp-eventsource-events[null]-1] INFO org.apache.kafka.common.metrics.Metrics - Metrics reporters closed
-[okhttp-eventsource-events[null]-1] INFO org.apache.kafka.common.utils.AppInfoParser - App info kafka.producer for producer-1 unregistered
+"code": "INVALID_REQUEST",
+
+"message": "Invalid value '"38"' for parameter 'scheduleId'. Expected type: class java.lang.Integer",
+
+"timestamp": "2025-10-30T11:28:54.709"
+
+}
+
+}
+
+but when I am hitting this in test env , I am gitting 500 Internal Server error
+https://jci44nmbpa-vpce-07100da6fbb2a281c.execute-api.us-east-1.amazonaws.com/test/sorting-service/api/v1/schedules/"38"/disposition-lots/CVS252860032
+
+Respsone
+
+{
+
+"code": "UNEXPECTED_ERROR",
+
+"message": "Method parameter 'scheduleId': Failed to convert value of type 'java.lang.String' to required type 'java.lang.Integer'; For input string: ""38""",
+
+"timestamp": "2025-10-30T11:32:43.948414736"
+
+}
+
+I want to 400 bad request in Test env too instead of 500
