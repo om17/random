@@ -1,0 +1,31 @@
+  @Query(value = """
+        SELECT
+            de.id AS destruction_event_id,
+            b.id AS bleed_id,
+            b.number AS bleed_number,
+            de.bleed_date AS bleed_date,
+            de.volume AS volume,
+            s.id AS shipment_id,
+            s.number AS shipment_number,
+            c.id AS carton_id,
+            c.number AS carton_number,
+            de.receipt_lot_number AS receipt_lot_number,
+            de.disposition_lot_number AS disposition_lot_number,
+            de.schedule_number AS schedule_number,
+            de.recorded_on AS recorded_on,
+            de.recorded_by AS recorded_by,
+            de.verified_by AS verified_by,
+            de.destruction_reason AS destruction_reason,
+            bc.id AS biohazard_container_id,
+            bc.number AS biohazard_container_number,
+            de.quality_system_reference_number AS quality_system_reference_number
+        FROM destruction_event de
+        LEFT JOIN bleed b ON de.bleed_id = b.id
+        LEFT JOIN shipment s ON de.shipment_id = s.id
+        LEFT JOIN carton c ON de.carton_id = c.id
+        LEFT JOIN biohazard_container bc ON de.biohazard_container_id = bc.id
+        WHERE de.record_id = :recordId
+        ORDER BY de.recorded_on ASC
+        """, nativeQuery = true)
+    List<DestructionEventProjection> findByRecordIdOrderByRecordedOnAsc(@Param("recordId") Long recordId);
+}
